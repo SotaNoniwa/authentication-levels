@@ -6,6 +6,8 @@ const mongoose = require("mongoose");
 const session = require("express-session");
 const passport = require("passport");
 const passportLocalMongoose = require("passport-local-mongoose");
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const findOrCreate = require('mongoose-findorcreate');
 
 const app = express();
 
@@ -34,11 +36,13 @@ async function main() {
 
     const userSchema = new mongoose.Schema({
         email: String,
-        password: String
+        password: String,
+        googleId: String
     });
 
     // we're going to save our users into mongodb database
     userSchema.plugin(passportLocalMongoose);
+    userSchema.plugin(findOrCreate);
 
     const User = mongoose.model("User", userSchema);
 
@@ -46,12 +50,53 @@ async function main() {
     passport.use(User.createStrategy());
 
     // manage user sessions
-    passport.serializeUser(User.serializeUser()); // store a user in the session
-    passport.deserializeUser(User.deserializeUser()); // retrieve a user from the session
+    // passport.serializeUser(User.serializeUser()); // store a user in the session
+    // passport.deserializeUser(User.deserializeUser()); // retrieve a user from the session
+    passport.serializeUser(function (user, cb) {
+        process.nextTick(function () {
+            return cb(null, {
+                id: user.id,
+                username: user.username,
+                picture: user.picture
+            });
+        });
+    });
+
+    passport.deserializeUser(function (user, cb) {
+        process.nextTick(function () {
+            return cb(null, user);
+        });
+    });
+
+    passport.use(new GoogleStrategy({
+            clientID: process.env.CLIENT_ID,
+            clientSecret: process.env.CLIENT_SECRET,
+            callbackURL: "http://localhost:3000/auth/google/secrets",
+            userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo"
+        },
+        function (accessToken, refreshToken, profile, cb) {
+            User.findOrCreate({
+                googleId: profile.id
+            }, function (err, user) {
+                return cb(err, user);
+            });
+        }
+    ));
 
     app.get("/", (req, res) => {
         res.render("home");
     });
+
+    app.get('/auth/google',
+        passport.authenticate('google', {
+            scope: ['email', 'profile']
+        }));
+
+    app.get('/auth/google/secrets',
+        passport.authenticate('google', {
+            successRedirect: '/secrets',
+            failureRedirect: '/login'
+        }));
 
     app.get("/login", (req, res) => {
         res.render("login");
