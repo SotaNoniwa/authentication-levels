@@ -37,7 +37,8 @@ async function main() {
     const userSchema = new mongoose.Schema({
         email: String,
         password: String,
-        googleId: String
+        googleId: String,
+        secret: String
     });
 
     // we're going to save our users into mongodb database
@@ -54,10 +55,10 @@ async function main() {
     // passport.deserializeUser(User.deserializeUser()); // retrieve a user from the session
     passport.serializeUser(function (user, cb) {
         process.nextTick(function () {
-            return cb(null, {
+            cb(null, {
                 id: user.id,
                 username: user.username,
-                picture: user.picture
+                name: user.name
             });
         });
     });
@@ -107,12 +108,26 @@ async function main() {
     });
 
     app.get("/secrets", (req, res) => {
+        User.find({
+                secret: {
+                    $ne: null
+                }
+            })
+            .then((foundUsers) => {
+                res.render("secrets", {
+                    usersWithSecrets: foundUsers
+                })
+            })
+            .catch((err) => console.log(err));
+    });
+
+    app.get("/submit", (req, res) => {
         if (req.isAuthenticated()) {
-            res.render("secrets");
+            res.render("submit");
         } else {
             res.redirect("/login");
         }
-    });
+    })
 
     app.get("/logout", (req, res) => {
         req.logout(function (err) {
@@ -153,6 +168,20 @@ async function main() {
                 });
             }
         });
+    });
+
+    app.post("/submit", (req, res) => {
+        const submittedSecret = req.body.secret;
+
+        const currentUserId = req.user.id.toString();
+
+        User.findById(currentUserId)
+            .then((foundUser) => {
+                foundUser.secret = submittedSecret;
+                foundUser.save();
+                res.redirect("/secrets");
+            })
+            .catch((err) => console.log(err));
     });
 
 
